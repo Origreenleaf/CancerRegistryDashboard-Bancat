@@ -1,0 +1,378 @@
+---
+title: "BANCAT – Alok Nibash Patient Registry Report"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    fig_caption: true
+    theme: flatly
+    highlight: tango
+    self_contained: true
+params:
+  filtered_data_1:  NULL
+  monetary_data:    NULL
+  growth_rate_data: NULL
+  gender_count:     NULL
+  sections:         !r character(0)
+  date_from:        !r Sys.Date()
+  date_to:          !r Sys.Date()
+  gender_filter:    "All"
+  cancer_filter:    "All"
+  age_filter:       "All"
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lubridate)
+library(kableExtra)
+library(scales)
+
+knitr::opts_chunk$set(
+  echo      = FALSE,
+  message   = FALSE,
+  warning   = FALSE,
+  fig.align = "center",
+  fig.width = 6.5,
+  fig.height= 3.5,
+  dpi       = 90
+)
+
+# Colors
+clr_purple <- "#462C7D"
+clr_dark   <- "#2C3E50"
+
+# Section flags
+show_trends     <- "trends" %in% params$sections
+show_age_gender <- "age_gender" %in% params$sections
+show_economic   <- "economic" %in% params$sections
+show_family     <- "family" %in% params$sections
+show_map        <- "map" %in% params$sections
+show_cancer     <- "cancer" %in% params$sections
+options(kable_styling_bootstrap_options = c("bordered", "striped", "hover", "condensed"))
+# Data aliases
+df     <- params$filtered_data_1
+mdata  <- params$monetary_data
+gdata  <- params$growth_rate_data
+gcount <- params$gender_count
+
+# Cumulative registrations
+cum_data <- df %>%
+  group_by(registration_date) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  arrange(registration_date) %>%
+  mutate(cumulative_count = cumsum(count))
+```
+
+
+```{css, echo=FALSE}
+caption {
+  color: #2C3E50 !important;
+  font-weight: 600;
+  font-size: 0.95em;
+}
+```
+
+## Applied Filters
+
+```{r filter-summary}
+data.frame(
+  Filter = c("Date Range", "Gender", "Cancer Type", "Age filter","Total Patients in Report"),
+  Value  = c(
+    paste(format(params$date_from, "%d %b %Y"), "–", format(params$date_to, "%d %b %Y")),
+    params$gender_filter,
+    params$cancer_filter,
+    params$age_filter,
+    format(nrow(df), big.mark = ",")
+  )
+) %>%
+  kbl(booktabs = TRUE, linesep = "", col.names = NULL) %>%
+  kable_styling(latex_options = "HOLD_position", full_width = FALSE, position = "left")
+```
+
+```{r s1-header, eval = show_trends, results='asis'}
+cat("\\newpage\n# Admission Trends\n\n")
+total_pts  <- max(cum_data$cumulative_count, na.rm = TRUE)
+avg_growth <- round(mean(gdata$growth_rate, na.rm = TRUE), 1)
+cat(sprintf(
+  "**Total registered patients:** %s \\hspace{1.5cm} **Monthly avg. growth rate:** %s%%\n\n",
+  format(total_pts, big.mark = ","), avg_growth
+))
+```
+
+```{r s1-cumplot, eval = show_trends, fig.height=3.6,dpi = 150, dev = "png", fig.cap="Cumulative Patient Registrations Over Time"}
+ggplot(cum_data, aes(registration_date, cumulative_count)) +
+  geom_area(fill = clr_purple, alpha = 0.28) +
+  geom_line(color = clr_purple, linewidth = 0.9) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "6 months") +
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.08))) +
+  labs(x = "Registration Date", y = "Total Patients",
+       title = "Cumulative Patient Registrations") +theme_minimal()+
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+```{r r s1-growth, eval = show_trends}
+gdata %>%
+  filter(!is.na(growth_rate)) %>%
+  select(date_label, monthly_new, cumulative_count, growth_rate) %>%
+  mutate(growth_rate = paste0(growth_rate, "%")) %>%
+  kbl(
+    booktabs  = TRUE,
+    linesep   = "",
+    col.names = c("Month", "New Patients", "Cumulative Total", "Growth Rate"),
+    caption   = "Monthly Growth Rate of New Admissions",
+    align     = c("l", "r", "r", "r")
+  ) %>%
+  kable_styling(latex_options = "HOLD_position", full_width = FALSE, position = "left")
+```
+
+```{r s2-header, eval = show_age_gender, results='asis'}
+avg_age <- round(mean(df$age, na.rm = TRUE), 1)
+cat(sprintf(
+  "\\newpage\n# Patient Demographics — Age & Gender\n\n**Average patient age:** %.1f years\n\n",
+  avg_age
+))
+```
+
+```{r s2-age-table, eval = show_age_gender}
+age_tbl <- df %>%
+  filter(!is.na(age_group)) %>%
+  group_by(age_group) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  mutate(Percentage = paste0(round(Count / sum(Count) * 100, 1), "%"))
+
+kbl(age_tbl, booktabs = TRUE, linesep = "",
+    col.names = c("Age Group", "Count", "% of Patients"),
+    caption = "Age Group Distribution") %>%
+  kable_styling(latex_options = "HOLD_position", full_width = FALSE, position = "left")
+```
+
+```{r r s2-gender, eval = show_age_gender}
+gcount %>%
+  filter(!is.na(patient_gender)) %>%
+  mutate(
+    count = format(count, big.mark = ","),
+    pct   = paste0(round(pct * 100, 1), "%")
+  ) %>%
+  kbl(
+    booktabs  = TRUE,
+    linesep   = "",
+    col.names = c("Gender", "Count", "% of Patients"),
+    caption   = "Gender Distribution",
+    align     = c("l", "r", "r")
+  ) %>%
+  kable_styling(latex_options = "HOLD_position", full_width = FALSE, position = "left")
+```
+
+```{r s2, eval = show_family}
+avg_hs <- round(mean(df$household_size, na.rm = TRUE), 2)
+avg_ch <- round(mean(df$num_children,   na.rm = TRUE), 2)
+
+data.frame(
+  Metric = c("Average Household Size",
+             "Average Number of Children per Household"),
+  Value  = c(avg_hs, avg_ch)
+) %>%
+  kbl(booktabs = TRUE, linesep = "",
+      col.names = c("Metric", "Average Value"),
+      caption   = "Family Dynamics Summary") %>%
+  kable_styling(latex_options = "HOLD_position", full_width = FALSE, position = "left")
+```
+
+```{r s3-header, eval = show_economic, results='asis'}
+cat("\\newpage\n# Patient Demographics — Economic Situation\n\n")
+```
+
+```{r s3.1-cost, eval = show_economic}
+avg_exp <- mean(mdata$average_treatment_cost, na.rm = TRUE)
+
+mdata %>%
+  mutate(
+    average_treatment_cost = paste0("BDT ", format(average_treatment_cost, big.mark = ",")),
+    average_yearly_income  = paste0("BDT ", format(average_yearly_income,  big.mark = ","))
+  ) %>%
+  select(Year, average_treatment_cost, average_yearly_income) %>%
+  kbl(
+    booktabs  = TRUE, linesep = "",
+    label     = "cost",
+    col.names = c("Year", "Avg. Treatment Cost", "Avg. Yearly Income"),
+    caption   = paste0("Treatment Cost by Year  |  Overall Avg: BDT ",
+                       format(round(avg_exp, -3), big.mark = ",")),
+    align     = c("l", "r", "r")
+  ) %>%
+  kable_styling(latex_options = "HOLD_position", full_width = FALSE) %>%
+  row_spec(nrow(mdata), bold = TRUE)
+
+pov_line <- 10000; low_line <- 25000
+breaks   <- seq(0, 40000, 5000)
+```
+
+```{r s3.2-income, eval = show_economic}
+df %>%
+  filter(!is.na(family_income), family_income > 0, family_income <= 40000) %>%
+  mutate(band = cut(family_income, breaks = breaks, include.lowest = TRUE,
+                    labels = paste0(format(breaks[-length(breaks)], big.mark = ","),
+                                   " – ", format(breaks[-1], big.mark = ",")))) %>%
+  count(band, name = "Patients") %>%
+  mutate(
+    Share = paste0(round(Patients / sum(Patients) * 100, 1), "%"),
+    Zone  = case_when(
+      as.integer(band) <= which(breaks == pov_line) - 1 ~ "Poverty",
+      as.integer(band) <= which(breaks == low_line) - 1 ~ "Low Income",
+      TRUE ~ ""
+    )
+  ) %>%
+  kbl(
+    booktabs  = TRUE, linesep = "",
+    label     = "income",
+    col.names = c("Income Band (BDT)", "Patients", "Share", "Zone"),
+    caption   = "Monthly Household Income Distribution",
+    align     = c("l", "r", "r", "l")
+  ) %>%
+  kable_styling(latex_options = "HOLD_position", full_width = FALSE)
+
+```
+
+```{r s5-header, eval = "map" %in% params$sections, results='asis'}
+cat("\\newpage\n# Patient Distribution by District\n\n")
+```
+
+```{r s5-table, eval = show_map}
+site_short <- c(
+  "Reproductive (Female)"                    = "Repro. (F)",
+  "Reproductive (Male)"                      = "Repro. (M)",
+  "Other cancers (brain ocular and thyroid)" = "CNS/Ocular/Thyroid"
+)
+
+district_totals <- df %>%
+  filter(!is.na(district)) %>%
+  mutate(district = as.character(district)) %>%
+  count(district, name = "total") %>%
+  mutate(pct = round(total / nrow(df) * 100, 1)) %>%
+  arrange(desc(total))
+
+cancer_lines <- df %>%
+  filter(!is.na(district),
+         !is.na(major_cancer_sites),
+         !major_cancer_sites %in% c("Unknown", "Not Applicable")) %>%
+  mutate(
+    district = as.character(district),
+    site     = as.character(major_cancer_sites),
+    site     = dplyr::recode(site, !!!site_short)
+  ) %>%
+  count(district, site, name = "n") %>%
+  group_by(district) %>%
+  mutate(site_pct = round(n / sum(n) * 100, 1)) %>%
+  arrange(desc(n)) %>%
+  summarise(
+    cancer_str = paste(paste0(site, " (", n, ", ", site_pct, "%)"),
+                       collapse = "; "),
+    .groups = "drop"
+  )
+
+district_totals %>%
+  left_join(cancer_lines, by = "district") %>%
+  mutate(district_label = paste0(district, "-(", total, ", ", pct, "%)")) %>%
+  select(district_label, cancer_str) %>%
+  kbl(
+    linesep   = "",
+    col.names = c("District (n, %)", "Cancer Site (n, %)"),
+    caption   = "Patient Distribution by District",
+    align     = c("l", "l")
+  ) %>%
+ kable_styling(
+    bootstrap_options = c("bordered", "striped", "hover", "condensed"),
+    full_width        = FALSE
+  )%>%
+  column_spec(1, bold = TRUE, width = "4cm") %>%
+  column_spec(2, width = "11cm")
+```
+
+
+```{r s6-header, eval = show_cancer, results='asis'}
+cat("\\newpage\n# Patient Medical Summary — Cancer Types\n\n")
+```
+
+```{r s6-barplot, eval = show_cancer, fig.height = 5, dpi = 150, dev = "png", fig.cap = "Major Cancer Sites by Patient Count"}
+df_cancer <- df %>%
+  filter(
+    !is.na(major_cancer_sites),
+    !major_cancer_sites %in% c("Unknown", "Not Applicable")
+  ) %>%
+  count(major_cancer_sites, name = "count") %>%
+  mutate(
+    pct   = count / nrow(df),
+    label = paste0(round(pct * 100, 1), "%")
+  ) %>%
+  arrange(desc(count))
+
+ggplot(df_cancer, aes(reorder(major_cancer_sites, count), count)) +
+  geom_col(
+    fill      = "#DFF1F1", color = clr_dark,
+    linewidth = 0.6, alpha = 0.9, width = 0.7
+  ) +
+  geom_text(aes(label = label), hjust = -0.15, size = 3, color = clr_dark) +
+  coord_flip() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.18)))+theme_minimal() +
+  labs(x = NULL, y = "Number of Patients",
+       title = "Patients by Major Cancer Site")
+```
+
+```{r s6-table, eval = show_cancer}
+df %>%
+  select(major_cancer_sites, cancer_affected_body_parts) %>%
+  filter(!is.na(major_cancer_sites),
+         !major_cancer_sites %in% c("Unknown", "Not Applicable"),
+         !is.na(cancer_affected_body_parts)) %>%
+  count(major_cancer_sites, cancer_affected_body_parts, name = "count") %>%
+  group_by(major_cancer_sites) %>%
+  mutate(
+    major_count   = sum(count),
+    major_pct     = round(major_count / nrow(df) * 100, 1),
+    body_part_pct = round(count / major_count * 100, 1)
+  ) %>%
+  arrange(major_cancer_sites, desc(count)) %>%
+  mutate(
+    site_label = if_else(
+      row_number() == 1,
+      paste0(major_cancer_sites, " (n=", major_count, ", ", major_pct, "%)"),
+      ""
+    ),
+    detail = paste0(cancer_affected_body_parts, ": ", count, " (", body_part_pct, "%)")
+  ) %>%
+  ungroup() %>%
+  select(site_label, detail) %>%
+  kbl(
+    booktabs  = TRUE,
+    linesep   = "",
+    col.names = c("Cancer Site", "Affected Body Part (n, %)"),
+    caption   = "Major Cancer Sites and Affected Body-Part Breakdown",
+    align     = c("l", "l")
+  )%>%  kable_styling(
+    latex_options = c( "striped"),
+    full_width    = FALSE
+  ) %>%
+  column_spec(1, bold = TRUE, width = "4cm") %>%
+  column_spec(2, width = "11cm")
+```
+
+
+```{r footer, results='asis'}
+cat('<hr style="margin-top: 2rem; margin-bottom: 0.5rem;">')
+cat(paste0(
+  '<p style="font-size: 0.85em; font-style: italic; color: #666;">',
+  "Report generated by BANCAT Dashboard — ",
+  format(Sys.Date(), "%B %d, %Y"),
+  ". Filters applied: Date ",
+  format(params$date_from, "%d %b %Y"),
+  " to ",
+  format(params$date_to, "%d %b %Y"),
+  ", Gender: ", params$gender_filter,
+  ", Cancer Type: ", params$cancer_filter, ".",
+  "</p>"
+))
+
+```
