@@ -1000,7 +1000,29 @@ server<-function(input, output, session) {
     contentType = "text/html"                                          
   )
   
-  
+  observeEvent(input$reset_overview,{
+    updateDateRangeInput(
+      session,
+      inputId = "date",
+      start   = min(df$registration_date, na.rm = TRUE),
+      end     = max(df$registration_date, na.rm = TRUE)
+    )
+    updateSelectInput(
+      session,
+      inputId = "gender",
+      selected = "All"
+    )
+    updateSelectInput(
+      session,
+      inputId = "cancer_type",
+      selected = "All"
+    )
+    updateSelectInput(
+      session, 
+      inputId = "age_group", 
+      selected = "All"
+    )
+  })
   
 }
 shinyApp(ui, server)
