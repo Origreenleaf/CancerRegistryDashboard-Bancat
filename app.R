@@ -123,8 +123,7 @@ age_adhoc <- df2 %>%select(age_group, major_cancer_sites) %>%group_by(age_group,
 df_r<-df%>%select(age_group, patient_gender, district,cancer_treatment_cost, family_income, major_cancer_sites, hospital, treatment, stage, marital_status, num_children, household_size, registration_date, date_of_diagnosis)%>%
   drop_na()
 
-ui <- fluidPage(
-  tags$style(HTML("
+app_css <- HTML("
   /* Sticky sidebar */
   .bslib-sidebar-layout > .sidebar {
     position: sticky;
@@ -133,257 +132,252 @@ ui <- fluidPage(
     min-height: 90vh;
     overflow-y: auto;
   }
-
-  /* Hide resize handle — correct class name in 0.9.0 */
-  .bslib-sidebar-resize-handle {
-    display: none !important;
-  }
-
-  /* Sticky toggle button */
+  .bslib-sidebar-resize-handle { display: none !important; }
   .bslib-sidebar-layout > .collapse-toggle {
     position: sticky;
     top: 10px;
     align-self: start;
     z-index: 999;
   }
-  .leaflet-container {
-    background: #ffffff !important;
-  }
+  .leaflet-container { background: #ffffff !important; }
+
+  .bslib-sidebar-layout > .sidebar .accordion { --bs-accordion-bg: transparent; }
   .bslib-sidebar-layout > .sidebar .accordion-item {
-  background-color: transparent !important;
-  border-left: none !important;
-  border-right: none !important;
-}
+    background-color: transparent !important;
+    border-left: none !important;
+    border-right: none !important;
+  }
+  .bslib-sidebar-layout > .sidebar .accordion-button,
+  .bslib-sidebar-layout > .sidebar .accordion-button:not(.collapsed) {
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
+  .bslib-sidebar-layout > .sidebar .accordion-body { background-color: transparent !important; }
 
-.bslib-sidebar-layout > .sidebar .accordion-button {
-  background-color: transparent !important;
-  box-shadow: none !important;
-}
+  /* Age table: show in full, no inner scrollbar */
+  .age-table-wrap,
+  .age-table-wrap .shiny-html-output,
+  .age-table-wrap .gt_table {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+  .age-table-wrap { margin-top: 0.25rem; width: 100%; }
+  .age-table-wrap .gt_table { width: 100% !important; }
 
-.bslib-sidebar-layout > .sidebar .accordion-button:not(.collapsed) {
-  background-color: transparent !important;
-  box-shadow: none !important;
-}
+  /* Age & Gender row: trim the empty space inside the boxes */
+  .age-gender-row .bslib-value-box { min-height: 0 !important; }
+  .age-gender-row .value-box-area {
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
+  }
 
-.bslib-sidebar-layout > .sidebar .accordion-body {
-  background-color: transparent !important;
-}
+  /* Keep navbar on a single line */
+  .navbar .navbar-nav { flex-wrap: nowrap; }
+  .navbar .nav-link {
+    font-size: 0.9rem;
+    padding: 0.5rem 0.6rem !important;
+    white-space: nowrap;
+  }
+  .navbar-brand {
+    font-size: 1.1rem;
+    white-space: nowrap;
+  }
+")
 
-.bslib-sidebar-layout > .sidebar .accordion {
-  --bs-accordion-bg: transparent;
-}
-")),
+
+common_sidebar <- sidebar(
+  resizable    = FALSE,
+  width        = 350,
+  position     = "left",
+  bg           = "#ffffff",
+  border       = TRUE,
+  border_color = "#dee2e6",
+  bslib::accordion(
+    id   = "ui_download",
+    open = "Filter",
+    bslib::accordion_panel(
+      "Filter",
+      icon = icon("filter"),
+      dateRangeInput(
+        inputId   = "date", label = "Date Range",
+        min       = min(df$registration_date, na.rm = TRUE),
+        max       = max(df$registration_date, na.rm = TRUE),
+        start     = min(df$registration_date, na.rm = TRUE),
+        end       = max(df$registration_date, na.rm = TRUE),
+        startview = "year", format = "yyyy-mm-dd"
+      ),
+      selectInput("gender", "Gender:", c("All", levels(df$patient_gender))),
+      selectInput("age_group", "Age Group:", c("All", levels(df$age_group)),
+                  selected = "All", multiple = TRUE),
+      selectInput("cancer_type", "Type of Cancer",
+                  choices = c("All", levels(df$major_cancer_sites)),
+                  selected = "All", multiple = TRUE),
+      actionButton("reset_overview",
+                   label = tagList(icon("rotate-left"), " Reset"),
+                   class = "btn btn-outline-secondary btn-sm float-end")
+    )
+  )
+)
+
+
+ui <- page_navbar(
+  title    = "BANCAT- AlokNibash Registry",
+  id       = "navbar",
+  sidebar  = common_sidebar,   
+  fillable = FALSE,          
+  header   = tags$head(tags$style(app_css)),
+  theme    = bs_theme(
+    preset    = "lumen",
+    base_font = font_collection(font_google("Poppins", local = FALSE),
+                                "Roboto", "sans-serif")
+  ),
   
-  page_navbar(
-    title = "BANCAT- AlokNibash Cancer Registry",
-    id    = "navbar",
-    theme = bs_theme(
-      preset    = "lumen",
-      base_font = font_collection(
-        font_google("Poppins", local = FALSE),
-        "Roboto", "sans-serif"
-      )
-    ),
-    
-    nav_panel(
-      "Overview",
-      layout_sidebar(                      
-        sidebar = sidebar(
-          resizable = FALSE,
-          width    = 350,
-          position = "left",
-          bg="#ffffff",
-          border       = TRUE,
-          border_color = "#dee2e6",
-          bslib::accordion(
-            id   = "ui_download",
-            open = FALSE,
-            bslib::accordion_panel(
-              "Filter",
-              icon = icon("filter"),
-              dateRangeInput(
-                inputId   = "date", label = "Date Range",
-                min       = min(df$registration_date, na.rm = TRUE),
-                max       = max(df$registration_date, na.rm = TRUE),
-                start     = min(df$registration_date, na.rm = TRUE),
-                end       = max(df$registration_date, na.rm = TRUE),
-                startview = "year", format = "yyyy-mm-dd"
-              ),
-              selectInput("gender", "Gender:", c("All", levels(df$patient_gender))),
-              selectInput("age_group", "Age Group: ",c("All", levels(df$age_group)), selected = "All", multiple = TRUE),
-              selectInput(
-                "cancer_type", "Type of Cancer",
-                choices  = c("All", levels(df$major_cancer_sites)),
-                selected = "All", multiple = TRUE
-              ),
-              
-              actionButton("reset_overview",
-                           label = tagList(icon("rotate-left"), " Reset"),
-                           class="btn btn-outline-secondary btn-sm float-end")
-            ),
-            
-            bslib::accordion_panel(
-              "Report",
-              icon  =icon("file-code"),
-              checkboxInput(
-                "report_all",
-                tags$span("Select All Sections", style = "font-weight:600;"),
-                value = TRUE
-              ),
-              checkboxGroupInput(
-                inputId  = "report_sections",
-                label    = NULL,
-                choices  = c(
-                  "Admission Trends"   = "trends",
-                  "Age & Gender"       = "age_gender",
-                  "Economic Situation" = "economic",
-                  "Family Dynamics"    = "family",
-                  "District Map"       = "map",
-                  "Cancer Summary"     = "cancer"
-                ),
-                selected = c("trends", "age_gender", "economic", "family", "map", "cancer")
-              ),
-              downloadButton(
-                outputId = "download_pdf",
-                label    = tagList(icon("file"), " Download Report"),
-                class    = "btn-danger btn-sm w-100 mt-1"
-              )
-            )
-          )
-          
+  nav_panel(
+    "Admission Trends",
+    icon = icon("chart-line"),
+    card(plotlyOutput("plot", height = "550px")),
+    card(
+      layout_column_wrap(
+        width = 1/2,
+        value_box(
+          title           = "Total Registered Patients:",
+          value           = uiOutput("total_cancer_type"),
+          showcase        = icon("hospital-user"),
+          showcase_layout = "left center",
+          theme           = value_box_theme(bg = "#E8EDF2", fg = "#2C3947"),
+          p("(In Alok Nibash 1 and 2)", style = "font-size: 0.85rem; color: gray;"),
+          div(style = "margin-top: 0.75rem;",
+              bslib::input_switch("show_1_pct", "Show (%)", value = FALSE))
         ),
-        
-        navset_card_tab(
-          id = "overview_tabs",
-          
-          nav_panel(
-            "Admission Trends",
-            icon = icon("chart-line"),
-            card(plotlyOutput("plot")),
-            card(
-              layout_column_wrap(
-                width = 1/2,
-                value_box(
-                  title            = "Total Registered Patients:",
-                  value            = uiOutput("total_cancer_type"),
-                  showcase         = icon("hospital-user"),
-                  showcase_layout  = "left center",
-                  theme            = value_box_theme(bg = "#E8EDF2", fg = "#2C3947"),
-                  p("(In Alok Nibash 1 and 2)",
-                    style = "font-size: 0.85rem; color: gray;"),
-                  div(style = "margin-top: 0.75rem;",
-                      bslib::input_switch("show_1_pct", "Show (%)", value = FALSE)
-                  )
-                ),
-                value_box(
-                  title           = "Monthly Average Growth Rate of New Admissions:",
-                  "Growth rate over time:",
-                  value           = uiOutput("avg_growth"),
-                  showcase        = plotlyOutput("growth_rate", height = "100%"),
-                  showcase_layout = showcase_bottom(height = 0.40),
-                  height          = "260px",
-                  theme           = value_box_theme(fg = "#093C5D", bg = "#F5F5F5")
-                )
-              )
-            )
-          ),
-          
-          nav_panel(
-            "Patient Demographics",
-            icon = icon("users"),
-            bslib::accordion(
-              id="demo_accordion",
-              open = FALSE,
-              bslib::accordion_panel(
-                "Age and Gender",
-                icon = icon("people-group"),
-                layout_column_wrap(
-                  width = 1/3,
-                  value_box(
-                    "Patients' Average Age",
-                    value           = uiOutput("age"),
-                    showcase        = gt_output("age_freq"),
-                    showcase_layout = showcase_bottom(height = 0.45),
-                    theme           = "text-purple"
-                  ),
-                  value_box(
-                    title           = "Male Patients", "(Count)",
-                    value           = uiOutput("male_count"),
-                    showcase        = icon("person"),
-                    showcase_layout = "left center",
-                    theme           = value_box_theme(bg = "#DFF1F1", fg = "#1a6eb5")
-                  ),
-                  value_box(
-                    title           = "Female Patients", "(Count)",
-                    value           = uiOutput("female_count"),
-                    showcase        = icon("person-dress"),
-                    showcase_layout = "left center",
-                    theme           = value_box_theme(bg = "#FFF6F6", fg = "#ad5c7f")
-                  )
-                ),
-                bslib::input_switch("show_pct", "Show (%)", value = FALSE)
-              ),
-              bslib::accordion_panel(
-                "Economic Situation",
-                icon = icon("money-bill-trend-up"),
-                card(
-                  card_header("Treatment Cost:"),
-                  height = 450,
-                  card_body(min_height = 350, plotlyOutput("expenditure"))
-                ),
-                card(
-                  card_header("Average Monthly Income Distribution:"),
-                  height = 500,
-                  card_body(min_height = 450, plotlyOutput("income_dist"))
-                )
-              ),
-              bslib::accordion_panel(
-                "Family Dynamic",
-                icon = icon("people-roof"),
-                layout_column_wrap(
-                  width = 1/2,
-                  value_box(
-                    title = "Average Household size:",
-                    value=textOutput("household_size_output"),
-                    showcase        = icon("house-user"),
-                    showcase_layout = "left center",
-                    theme           = value_box_theme(bg = "#DFF1F1", fg = "#093C5D")
-                  ),
-                  value_box(
-                    title = "Average Number of Children per Household",
-                    value=textOutput("children_number"),
-                    showcase        = icon("children"),
-                    showcase_layout = "left center",
-                    theme           = value_box_theme(bg = "#F5F5F5", fg = "#3E8E7E")
-                  )
-                )
-              ),
-              bslib::accordion_panel(
-                title = "Additional Information",
-                icon=icon("plus-circle"),
-                card(
-                  card_header("Patient Distribution by District"),
-                  height = 850,
-                  card_body(min_height = 700, leafletOutput("district_map"))
-                )
-              )
-            )
-            
-          ),
-          
-          nav_panel(
-            "Patient Medical Summary",
-            icon = icon("file-medical"),
-            card(
-              card_header("Type of Cancer"),
-              height = 650,
-              card_body(min_height = 550, plotlyOutput("cancer_barplot"))
-            )
-          )
+        value_box(
+          title           = "Monthly Average Growth Rate of New Admissions:",
+          "Growth rate over time:",
+          value           = uiOutput("avg_growth"),
+          showcase        = plotlyOutput("growth_rate", height = "100%"),
+          showcase_layout = showcase_bottom(height = 0.40),
+          height          = "260px",
+          theme           = value_box_theme(fg = "#093C5D", bg = "#F5F5F5")
         )
       )
     )
-  )
+  ),
+  
+  nav_panel(
+    "Patient Demographics",
+    icon = icon("users"),
+    bslib::accordion(
+      id   = "demo_accordion",
+      open = FALSE,
+      bslib::accordion_panel(
+        "Age and Gender",
+        icon = icon("people-group"),
+        layout_column_wrap(
+          width = 1/3,
+          class = "age-gender-row",
+          value_box(
+            "Patients' Average Age",
+            value = uiOutput("age"),
+            theme = "text-purple",
+            div(class = "age-table-wrap", gt_output("age_freq"))
+          ),
+          value_box(
+            title           = "Male Patients", "(Count)",
+            value           = uiOutput("male_count"),
+            showcase        = icon("person"),
+            showcase_layout = "left center",
+            theme           = value_box_theme(bg = "#DFF1F1", fg = "#1a6eb5")
+          ),
+          value_box(
+            title           = "Female Patients", "(Count)",
+            value           = uiOutput("female_count"),
+            showcase        = icon("person-dress"),
+            showcase_layout = "left center",
+            theme           = value_box_theme(bg = "#FFF6F6", fg = "#ad5c7f")
+          )
+        ),
+        bslib::input_switch("show_pct", "Show (%)", value = FALSE)
+      ),
+      bslib::accordion_panel(
+        "Economic Situation",
+        icon = icon("money-bill-trend-up"),
+        card(card_header("Treatment Cost:"), height = 450,
+             card_body(min_height = 350, plotlyOutput("expenditure"))),
+        card(card_header("Average Monthly Income Distribution:"), height = 500,
+             card_body(min_height = 450, plotlyOutput("income_dist")))
+      ),
+      bslib::accordion_panel(
+        "Family Dynamic",
+        icon = icon("people-roof"),
+        layout_column_wrap(
+          width = 1/2,
+          value_box(
+            title           = "Average Household size:",
+            value           = textOutput("household_size_output"),
+            showcase        = icon("house-user"),
+            showcase_layout = "left center",
+            theme           = value_box_theme(bg = "#DFF1F1", fg = "#093C5D")
+          ),
+          value_box(
+            title           = "Average Number of Children per Household",
+            value           = textOutput("children_number"),
+            showcase        = icon("children"),
+            showcase_layout = "left center",
+            theme           = value_box_theme(bg = "#F5F5F5", fg = "#3E8E7E")
+          )
+        )
+      ),
+      bslib::accordion_panel(
+        title = "Additional Information",
+        icon  = icon("plus-circle"),
+        card(card_header("Patient Distribution by District"), height = 850,
+             card_body(min_height = 700, leafletOutput("district_map")))
+      )
+    )
+  ),
+  
+  
+  nav_menu(
+    "More",
+    icon = icon("ellipsis"),
+    nav_panel(
+      "Patient Medical Summary",
+      icon = icon("file-medical"),
+      card(card_header("Type of Cancer"), height = 650,
+           card_body(min_height = 550, plotlyOutput("cancer_barplot")))
+    ),
+    nav_panel(
+      "Registry Report",
+      icon = icon("file-code"),
+      card(
+        card_header("Registry Summary Report"),
+        
+        checkboxInput("report_all",
+                      tags$span("Select All Sections", style = "font-weight:600;"),
+                      value = TRUE),
+        checkboxGroupInput(
+          inputId  = "report_sections",
+          label    = NULL,
+          choices  = c(
+            "Admission Trends"   = "trends",
+            "Age & Gender"       = "age_gender",
+            "Economic Situation" = "economic",
+            "Family Dynamics"    = "family",
+            "District Map"       = "map",
+            "Cancer Summary"     = "cancer"
+          ),
+          selected = c("trends", "age_gender", "economic", "family", "map", "cancer")
+        ),
+        downloadButton(
+          outputId = "download_pdf",
+          label    = tagList(icon("file"), " Download Report"),
+          class    = "btn-danger btn-sm w-100 mt-1"
+        )
+      )
+    )
+  ),
+  
+  nav_spacer()
 )
 
 server<-function(input, output, session) {
@@ -398,8 +392,6 @@ server<-function(input, output, session) {
       arrange(registration_date) %>%
       mutate(cumulative_count = cumsum(count))
   })
-  
-  
   
   filtered_data_1<-reactive({
     df%>%filter(registration_date >= input$date[1], registration_date <= input$date[2]) %>%
@@ -438,9 +430,7 @@ server<-function(input, output, session) {
       )
   })
   
-  
   output$plot <- renderPlotly({
-    
     plot_ly(filtered_data() , x = ~registration_date, y = ~cumulative_count,
             type = "scatter", mode = "lines",
             fill = "tozeroy",
@@ -451,7 +441,7 @@ server<-function(input, output, session) {
         dragmode = FALSE,
         xaxis = list(
           title = "Registration Date",
-          range = c(input$date_start - 15, input$date_end + 15),
+          range = c(input$date[1] - 15, input$date[2] + 15),   # fixed (was input$date_start / date_end)
           fixedrange = TRUE
         ),
         yaxis = list(
@@ -469,14 +459,11 @@ server<-function(input, output, session) {
     row <- gender_count() %>% filter(patient_gender == "Male")
     if (nrow(row) == 0) return("0")
     fmt_val(row$count, row$pct, if (input$show_pct) "pct" else "count") 
-    
   })
   output$total_cancer_type<-renderText({
     val<-filtered_data()%>%summarise(total = max(cumulative_count, na.rm=TRUE))%>% pull(total)
     if (length(val) == 0) return("0")
     fmt_val(val, val/nrow(df), if(input$show_1_pct) "pct" else "count")
-    
-    
   })
   output$female_count <- renderText({
     row <- gender_count() %>% filter(patient_gender == "Female")
@@ -484,9 +471,7 @@ server<-function(input, output, session) {
     fmt_val(row$count, row$pct, if (input$show_pct) "pct" else "count")
   })
   
-  
   ##Growth rate
-  
   output$avg_growth <- renderText({
     val <- growth_rate_data()%>%pull(growth_rate) %>% mean(na.rm = TRUE) %>%round(1) %>% paste0("%") 
     if (length(val) == 0) 0 else val
@@ -505,26 +490,15 @@ server<-function(input, output, session) {
       layout(
         dragmode = FALSE,
         margin = list(l = 5, r = 5, t = 5, b = 5),
-        xaxis = list(
-          title = "",
-          tickformat = "%b %Y",
-          fixedrange = TRUE,
-          showgrid = FALSE
-        ),
-        yaxis = list(
-          title = "",
-          ticksuffix = "%",                # % after every y axis number
-          rangemode = "nonnegative",
-          fixedrange = TRUE,
-          showgrid = FALSE
-        )
+        xaxis = list(title = "", tickformat = "%b %Y", fixedrange = TRUE, showgrid = FALSE),
+        yaxis = list(title = "", ticksuffix = "%", rangemode = "nonnegative",
+                     fixedrange = TRUE, showgrid = FALSE)
       )
   })
   
   fmt_val <- function(count, pct, fmt) {
     if (fmt == "pct") paste0(round(pct * 100, 1), "%") else as.character(count)
   }
-  
   
   output$expenditure <- renderPlotly({
     df     <- monetary_data()
@@ -569,8 +543,6 @@ server<-function(input, output, session) {
       config(displayModeBar = FALSE, responsive = TRUE)
   })
   
-  
-  
   output$age_freq<-render_gt({
     fmt <- if (input$show_pct) "pct" else "count"
     
@@ -588,15 +560,9 @@ server<-function(input, output, session) {
       rng <- range(unlist(table_data), na.rm = TRUE)
       k<-table_data %>%
         gt() %>%
-        tab_header(
-          title = md("Age Group Distribution")
-        ) %>%
-        data_color(
-          columns = everything(),
-          method = "numeric",
-          domain = rng,
-          palette = c("#FFFDF0", "#EDE9E6", "#DDDDDD")
-        )
+        tab_header(title = md("Age Group Distribution")) %>%
+        data_color(columns = everything(), method = "numeric", domain = rng,
+                   palette = c("#FFFDF0", "#EDE9E6", "#DDDDDD"))
     } else{
       table_data<-base%>%select(age_group, prop)%>%
         pivot_wider(names_from = age_group, values_from = prop)%>%
@@ -604,40 +570,30 @@ server<-function(input, output, session) {
       rng <- range(unlist(table_data), na.rm = TRUE)
       k<-table_data %>%
         gt() %>%
-        tab_header(
-          title = md("Age Group Distribution")
-        ) %>%
-        data_color(
-          columns = everything(),
-          method = "numeric",
-          domain = rng,
-          palette = c("#FFFDF0", "#EDE9E6", "#DDDDDD")
-        )%>%
+        tab_header(title = md("Age Group Distribution")) %>%
+        data_color(columns = everything(), method = "numeric", domain = rng,
+                   palette = c("#FFFDF0", "#EDE9E6", "#DDDDDD"))%>%
         fmt_percent(columns = everything(), decimals = 1)
-      
     }
-    
     
     k%>% gt_theme_nytimes()%>% 
       tab_options(
         table.font.names = "Helvetica",
-        table.font.size = px(17),
-        
+        table.width = pct(100),
+        table.font.size = px(18),
+        container.height = "auto",
+        container.overflow.y = "visible",
+        container.overflow.x = "visible",
         heading.title.font.size = px(16),
         heading.title.font.weight = "bold",
-        
-        column_labels.font.size = px(15),
+        column_labels.font.size = px(14),
         column_labels.font.weight = "bold",
         column_labels.background.color = "white",
-        
-        data_row.padding = px(12)
+        data_row.padding = px(10),
+        heading.padding = px(2),
+        column_labels.padding = px(6)
       ) %>%
-      
-      cols_align(
-        align = "left",
-        columns = everything()
-      )
-    
+      cols_align(align = "left", columns = everything())
   })
   
   output$income_dist <- renderPlotly({
@@ -645,7 +601,7 @@ server<-function(input, output, session) {
     
     req(nrow(df) > 0, !all(is.na(df$family_income)))
     
-    income  <- df$family_income[!is.na(df$family_income) & df$family_income > 0]  # ← exclude 0 and NA
+    income  <- df$family_income[!is.na(df$family_income) & df$family_income > 0]
     
     max_val <- ceiling(max(income) / 5000) * 5000
     breaks  <- seq(0, max(max_val, 40000), by = 5000)
@@ -663,8 +619,7 @@ server<-function(input, output, session) {
       )
     ) |> dplyr::filter(x <= 40000)
     
-    # Define thresholds
-    poverty_line    <- 10000   # adjust to your context
+    poverty_line    <- 10000
     low_income_line <- 25000
     
     plot_ly(bin_df, x = ~x, y = ~y, customdata = ~hov_text) %>%
@@ -682,94 +637,65 @@ server<-function(input, output, session) {
         font          = list(family = "Poppins, sans-serif", color = "#2C3E50"),
         margin        = list(l = 0, r = 0, t = 30, b = 0),
         showlegend    = FALSE,
-        
         shapes = list(
-          # Poverty line
-          list(
-            type = "line", xref = "x", yref = "paper",
-            x0 = poverty_line, x1 = poverty_line, y0 = 0, y1 = 1,
-            line = list(color = "#E74C3C", width = 1.5, dash = "dot")
-          ),
-          # Low income line
-          list(
-            type = "line", xref = "x", yref = "paper",
-            x0 = low_income_line, x1 = low_income_line, y0 = 0, y1 = 1,
-            line = list(color = "#E67E22", width = 1.5, dash = "dot")
-          ),
-          # Shade below poverty line
-          list(
-            type    = "rect",
-            xref    = "x",    x0 = 0,             x1 = poverty_line,
-            yref    = "paper", y0 = 0,             y1 = 1,
-            fillcolor = "rgba(231, 76, 60, 0.1)",
-            line    = list(width = 0)
-          ),
-          list(
-            type="rect",
-            xref="x", x0=poverty_line, x1=low_income_line,
-            yref="paper", y0=0, y1=1,
-            fillcolor="rgba(230, 126, 34, 0.1)",
-            line=list(width=0)
-          )
+          list(type = "line", xref = "x", yref = "paper",
+               x0 = poverty_line, x1 = poverty_line, y0 = 0, y1 = 1,
+               line = list(color = "#E74C3C", width = 1.5, dash = "dot")),
+          list(type = "line", xref = "x", yref = "paper",
+               x0 = low_income_line, x1 = low_income_line, y0 = 0, y1 = 1,
+               line = list(color = "#E67E22", width = 1.5, dash = "dot")),
+          list(type = "rect", xref = "x", x0 = 0, x1 = poverty_line,
+               yref = "paper", y0 = 0, y1 = 1,
+               fillcolor = "rgba(231, 76, 60, 0.1)", line = list(width = 0)),
+          list(type = "rect", xref = "x", x0 = poverty_line, x1 = low_income_line,
+               yref = "paper", y0 = 0, y1 = 1,
+               fillcolor = "rgba(230, 126, 34, 0.1)", line = list(width = 0))
         ),
-        
         annotations = list(
           list(
-            xref = "x", x = poverty_line,
-            yref = "paper", y = -0.15,
-            text = paste0("<b>Poverty Line</b><br>BDT ", 
-                          format(poverty_line, big.mark = ",")),
+            xref = "x", x = poverty_line, yref = "paper", y = -0.15,
+            text = paste0("<b>Poverty Line</b><br>BDT ", format(poverty_line, big.mark = ",")),
             showarrow = FALSE, yanchor = "bottom",
             font = list(size = 10, color = "#E74C3C")
           ),
           list(
-            xref = "x", x = low_income_line,
-            yref = "paper", y = 1,
-            text = paste0("<b>Low Income</b><br>BDT ",
-                          format(low_income_line, big.mark = ",")),
+            xref = "x", x = low_income_line, yref = "paper", y = 1,
+            text = paste0("<b>Low Income</b><br>BDT ", format(low_income_line, big.mark = ",")),
             showarrow = FALSE, yanchor = "bottom",
             font = list(size = 10, color = "#E67E22")
           ),
           list(
-            xref = "paper", x = 0.15,
-            yref = "paper", y = .95,
+            xref = "paper", x = 0.15, yref = "paper", y = .95,
             text = paste0(
               "<b>", sum(df$family_income <= 10000, na.rm = TRUE), " (",
               round(mean(df$family_income <= 10000, na.rm = TRUE) * 100, 1),
               "%)</b> ", "<br>patients <br> below <br><b>BDT 10,000</b>"
             ),
-            showarrow = FALSE,
-            xanchor   = "left",
-            font      = list(size = 12, color = "#0B1849")
+            showarrow = FALSE, xanchor = "left",
+            font = list(size = 12, color = "#0B1849")
           ),
           list(
-            xref = "paper", x = 0.53,
-            yref = "paper", y = .95,
+            xref = "paper", x = 0.53, yref = "paper", y = .95,
             text = paste0(
               "<b>", sum(df$family_income <= 25000, na.rm = TRUE), " (",
               round(mean(df$family_income <= 25000, na.rm = TRUE) * 100, 1),
               "%)</b>", "<br>patients <br> below <br><b>BDT 25,000</b>"
             ),
-            showarrow = FALSE,
-            xanchor   = "left",
-            font      = list(size = 12, color = "#0B1849")
+            showarrow = FALSE, xanchor = "left",
+            font = list(size = 12, color = "#0B1849")
           )
         ),
-        
         xaxis = list(
           title    = list(text = "Monthly Household Income (BDT)", standoff = 15,
                           font = list(size = 12, color = "#2C3E50")),
-          range     = c(0, 40000),
-          showgrid = FALSE, zeroline = FALSE,
-          ticklen  = 6,     tickpad  = 8,
-          tickformat = ",0f", fixedrange = TRUE
+          range = c(0, 40000), showgrid = FALSE, zeroline = FALSE,
+          ticklen = 6, tickpad = 8, tickformat = ",0f", fixedrange = TRUE
         ),
         yaxis = list(
           title    = list(text = "Number of Patients", standoff = 15,
                           font = list(size = 12, color = "#2C3E50")),
-          showgrid  = TRUE, zeroline = FALSE,
-          gridcolor = "rgba(0,0,0,0.06)",
-          ticklen   = 6,    tickpad  = 8,fixedrange = TRUE
+          showgrid = TRUE, zeroline = FALSE, gridcolor = "rgba(0,0,0,0.06)",
+          ticklen = 6, tickpad = 8, fixedrange = TRUE
         )
       ) %>%
       config(displayModeBar = FALSE, responsive = TRUE)
@@ -784,12 +710,6 @@ server<-function(input, output, session) {
     if (length(val) == 0) 0 else val
   })
   
-  
-  
-  
-  
-  
-  
   output$district_map <- renderLeaflet({
     df <- filtered_data_1()
     
@@ -798,7 +718,6 @@ server<-function(input, output, session) {
       count(district, name = "n") |>
       mutate(district = as.character(district))
     
-    # Major cancer site breakdown per district
     district_cancer <- df |>
       filter(!is.na(district), !is.na(major_cancer_sites),
              major_cancer_sites != "Unknown",
@@ -811,12 +730,8 @@ server<-function(input, output, session) {
         site_pct  = round(site_count / sum(site_count) * 100, 1),
         site_line = paste0(major_cancer_sites, ": ", site_count, " (", site_pct, "%)")
       ) |>
-      summarise(
-        cancer_breakdown = paste(site_line, collapse = "<br>"),
-        .groups = "drop"
-      )
+      summarise(cancer_breakdown = paste(site_line, collapse = "<br>"), .groups = "drop")
     
-    # Join everything together
     map_data <- bd_sf_geom |>
       left_join(district_counts,  by = c("NAME_2" = "district")) |>
       left_join(district_cancer,  by = c("NAME_2" = "district")) |>
@@ -842,8 +757,7 @@ server<-function(input, output, session) {
         fillOpacity = 1,
         color       = "white",
         weight      = 0.5,
-        label = ~paste0(NAME_2, " — ", n, " patients") |>
-          lapply(htmltools::HTML),
+        label = ~paste0(NAME_2, " — ", n, " patients") |> lapply(htmltools::HTML),
         popup = ~paste0(
           "<div style='font-family:Poppins,sans-serif; min-width:180px;'>",
           "<b style='font-size:14px;'>", NAME_2, "</b><br>",
@@ -853,18 +767,11 @@ server<-function(input, output, session) {
           "<span style='font-size:11px; line-height:1.8;'>", cancer_breakdown, "</span>",
           "</div>"
         ) |> lapply(htmltools::HTML),
-        highlightOptions = highlightOptions(
-          weight      = 2,
-          fillOpacity = 0.8,
-          bringToFront = TRUE
-        )
+        highlightOptions = highlightOptions(weight = 2, fillOpacity = 0.8, bringToFront = TRUE)
       ) |>
       leaflet.extras::addSearchFeatures(
         targetGroups = "districts",
-        options      = leaflet.extras::searchFeaturesOptions(
-          zoom      = 10,
-          openPopup = TRUE
-        )
+        options      = leaflet.extras::searchFeaturesOptions(zoom = 10, openPopup = TRUE)
       ) |>
       addEasyButton(
         easyButton(
@@ -875,9 +782,6 @@ server<-function(input, output, session) {
       ) |>
       addLegend(pal = pal, values = ~n, title = "Patients", position = "bottomright")
   })
-  
-  
-  
   
   output$cancer_barplot <- renderPlotly({
     df <- filtered_data_1()
@@ -896,7 +800,6 @@ server<-function(input, output, session) {
         Prop               = count / sum(count),
         major_cancer_count = sum(count),
         major_prop         = paste0(round(major_cancer_count / nrow(df) * 100, 1), "%"),
-        # ← build the sub-row detail here while all columns are available
         detail_line        = paste0(cancer_affected_body_parts, ": ", count,
                                     " (", round(Prop * 100, 1), "%)")
       ) %>%
@@ -906,7 +809,7 @@ server<-function(input, output, session) {
         hov_text           = paste0(
           "<b>", first(major_cancer_sites), ":  ",
           first(major_cancer_count), " (", first(major_prop), ")</b><br>",
-          paste(detail_line, collapse = "<br>")   # ← collapse the pre-built lines
+          paste(detail_line, collapse = "<br>")
         ),
         .groups = "drop"
       )
@@ -934,14 +837,12 @@ server<-function(input, output, session) {
         showlegend    = FALSE,
         xaxis = list(
           title    = list(text = "Major Cancer Sites", font = list(size = 12, color = "#2C3E50"),standoff = 10),
-          showgrid = FALSE, zeroline = FALSE,
-          ticklen  = 6, tickpad = 8, fixedrange = TRUE
+          showgrid = FALSE, zeroline = FALSE, ticklen = 6, tickpad = 8, fixedrange = TRUE
         ),
         yaxis = list(
           title    = list(text = "Number of Patients", font = list(size = 12, color = "#2C3E50"), standoff = 15),
-          showgrid  = TRUE, zeroline = FALSE,
-          gridcolor = "rgba(0,0,0,0.06)",
-          ticklen   = 6, tickpad = 8, fixedrange = TRUE
+          showgrid = TRUE, zeroline = FALSE, gridcolor = "rgba(0,0,0,0.06)",
+          ticklen = 6, tickpad = 8, fixedrange = TRUE
         )
       ) %>%
       config(displayModeBar = FALSE, responsive = TRUE)
@@ -956,14 +857,12 @@ server<-function(input, output, session) {
     )
   })
   
-  
   observeEvent(input$report_sections, ignoreNULL = FALSE, ignoreInit = TRUE, {
     updateCheckboxInput(
       session, "report_all",
       value = setequal(input$report_sections, all_secs)
     )
   })
-  
   
   output$download_pdf <- downloadHandler(
     filename = function() {
@@ -1002,27 +901,14 @@ server<-function(input, output, session) {
   
   observeEvent(input$reset_overview,{
     updateDateRangeInput(
-      session,
-      inputId = "date",
-      start   = min(df$registration_date, na.rm = TRUE),
-      end     = max(df$registration_date, na.rm = TRUE)
+      session, inputId = "date",
+      start = min(df$registration_date, na.rm = TRUE),
+      end   = max(df$registration_date, na.rm = TRUE)
     )
-    updateSelectInput(
-      session,
-      inputId = "gender",
-      selected = "All"
-    )
-    updateSelectInput(
-      session,
-      inputId = "cancer_type",
-      selected = "All"
-    )
-    updateSelectInput(
-      session, 
-      inputId = "age_group", 
-      selected = "All"
-    )
+    updateSelectInput(session, inputId = "gender",      selected = "All")
+    updateSelectInput(session, inputId = "cancer_type", selected = "All")
+    updateSelectInput(session, inputId = "age_group",   selected = "All")
   })
-  
 }
+
 shinyApp(ui, server)
