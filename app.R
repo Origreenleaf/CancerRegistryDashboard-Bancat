@@ -335,17 +335,16 @@ ui <- page_navbar(
       )
     )
   ),
-  
-  
-  nav_menu(
-    "More",
-    icon = icon("ellipsis"),
-    nav_panel(
+  nav_panel(
       "Patient Medical Summary",
       icon = icon("file-medical"),
       card(card_header("Type of Cancer"), height = 650,
            card_body(min_height = 550, plotlyOutput("cancer_barplot")))
     ),
+  
+  nav_menu(
+    "More",
+    icon = icon("ellipsis"),
     nav_panel(
       "Registry Report",
       icon = icon("file-code"),
